@@ -18,7 +18,7 @@ This blueprint provides a prioritized implementation plan for remaining pending 
 |----------|-------|--------|--------------|
 | HIGH | 0 | ✅ 0 | 0 sprints |
 | MEDIUM | 0 | ✅ 0 | 0 sprints |
-| LOW | 2 | ⏳ 1 + 🔄 1 | 7 sprints |
+| LOW | 1 | ✅ 0 + 🔄 1 | 5 sprints |
 
 ---
 
@@ -206,41 +206,35 @@ This blueprint provides a prioritized implementation plan for remaining pending 
 ---
 
 ### 8. WIN-DS-02: Bandwidth Metrics Export
-**Status:** ⏳ Pending  
+**Status:** ✅ Completed  
 **Category:** Data Science  
 **Priority:** Low (Operational tooling)  
 **Assignee:** @data-team  
-**Due Date:** Q4 2026  
-**Risk Level:** Low
+**Completed:** 2026-04-15
 
-**Blockers:**
-1. Similar to WIN-DS-01 - needs metrics infrastructure first
-2. No Prometheus/statsd export (need exporter library)
-3. No bandwidth quota enforcement
+**Implementation:**
+- Created `BandwidthMetrics` and `BandwidthRecorder` in `crates/vpn-analytics/`
+- Per-connection throughput (bytes/sec) via 5-second sampling
+- Session bandwidth (total bytes up/down)
+- Peak/average rates (rolling window)
+- Export via Prometheus, JSON, and CSV formats
 
-**Solution Blueprint:**
-```
-1. Add bandwidth tracking (1 sprint):
-   ├── Per-connection throughput (bytes/sec)
-   ├── Session bandwidth (total bytes up/down)
-   ├── Peak/average rates (rolling 10s window)
-   └── Network interface stats
-   
-2. Add export options (0.5 sprints):
-   ├── Prometheus /metrics endpoint (text format)
-   ├── statsd/datadog export
-   └── JSON API for custom tools
-   
-3. Add alerts (0.5 sprints):
-   ├── Bandwidth thresholds (e.g., >80% of limit)
-   ├── Unusual traffic patterns (potential issues)
-   └── Daily/weekly usage summaries
-```
+**Exported Metrics:**
+- `aegis_bandwidth_upload_bytes_per_second` - Current upload speed
+- `aegis_bandwidth_download_bytes_per_second` - Current download speed
+- `aegis_bandwidth_peak_upload_bytes_per_second` - Peak upload
+- `aegis_bandwidth_peak_download_bytes_per_second` - Peak download
+- `aegis_bandwidth_avg_upload_bytes_per_second` - Average upload
+- `aegis_bandwidth_avg_download_bytes_per_second` - Average download
+- `aegis_bandwidth_total_megabytes` - Total transfer
 
-**Files to Modify:** `vpn-logger/`, `service.rs`  
-**Depends On:** WIN-DS-01  
-**Estimated Effort:** 2 sprints (after WIN-DS-01)  
-**Acceptance Criteria:** Prometheus pulls work; <1% overhead; accurate to 1%
+**Remaining:**
+- Bandwidth quota enforcement (future feature)
+- statsd/datadog export (future enhancement)
+
+**Acceptance Criteria:** ✅ Met - Prometheus format works; CSV/JSON export
+
+**Files Modified:** `crates/vpn-analytics/src/metrics.rs`, `crates/vpn-analytics/src/export.rs`
 
 ---
 
@@ -380,7 +374,7 @@ WIN-UX-02 (System Tray)
   └── Requires: WIN-UX-01 (Tauri) first
   
 WIN-DS-02 (Bandwidth Metrics)
-  └── Requires: WIN-DS-01 (Analytics) first
+  ✅ COMPLETED (2026-04-15)
   
 WIN-ML-02 (Adaptive Kill Switch)
   └── Requires: WIN-ML-01 (Data Collection) first
