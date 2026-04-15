@@ -1,0 +1,23 @@
+[package]
+name = "vpn-analytics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+
+[features]
+default = ["prometheus"]
+
+prometheus = []
+influxdb = []

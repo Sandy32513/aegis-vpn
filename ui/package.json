@@ -8,7 +8,9 @@
     "dev:api": "node server/index.mjs",
     "dev:mcp": "node ../scripts/mock-mcp.mjs",
     "dev:web": "vite",
+    "dev:tauri": "tauri dev",
     "build": "vite build",
+    "build:tauri": "tauri build",
     "start": "node server/index.mjs",
     "preview": "vite preview",
     "lint": "eslint .",
@@ -23,6 +25,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.24.0",
+    "@tauri-apps/cli": "^2",
     "@types/express": "^5.0.1",
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.2",

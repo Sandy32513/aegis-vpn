@@ -16,6 +16,7 @@ tracing.workspace = true
 uuid.workspace = true
 vpn-config = { path = "../vpn-config" }
 vpn-crypto = { path = "../vpn-crypto" }
+vpn-enterprise = { path = "../vpn-enterprise" }
 vpn-ipc = { path = "../vpn-ipc" }
 vpn-logger = { path = "../vpn-logger" }
 vpn-routing = { path = "../vpn-routing" }
