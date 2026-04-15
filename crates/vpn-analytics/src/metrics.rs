@@ -74,6 +74,7 @@ pub struct MetricsRecorder {
     history: Arc<RwLock<Vec<ConnectionMetrics>>>,
     server_stats: Arc<RwLock<HashMap<String, ServerStats>>>,
     max_history: usize,
+    bandwidth: Arc<BandwidthRecorder>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -96,6 +97,7 @@ impl MetricsRecorder {
             history: Arc::new(RwLock::new(Vec::with_capacity(max_history))),
             server_stats: Arc::new(RwLock::new(HashMap::new())),
             max_history,
+            bandwidth: Arc::new(BandwidthRecorder::default()),
         }
     }
 
@@ -109,6 +111,10 @@ impl MetricsRecorder {
 
     pub fn server_stats(&self) -> Vec<ServerStats> {
         self.server_stats.read().values().cloned().collect()
+    }
+
+    pub fn bandwidth(&self) -> Arc<BandwidthRecorder> {
+        self.bandwidth.clone()
     }
 
     pub fn connect_start(&self, server: &str) {
@@ -137,6 +143,7 @@ impl MetricsRecorder {
         current.session_id = session_id.to_string();
         current.status = ConnectionStatus::Connected;
         current.connected_at = unix_millis();
+        self.bandwidth.start_session(session_id);
     }
 
     pub fn disconnect(&self) {
@@ -144,6 +151,8 @@ impl MetricsRecorder {
         if current.status == ConnectionStatus::Connected {
             current.duration_secs = ((unix_millis() - current.connected_at) / 1000) as u64;
             current.status = ConnectionStatus::Disconnected;
+
+            self.bandwidth.end_session();
 
             let finished = current.clone();
             drop(current);
@@ -171,11 +180,15 @@ impl MetricsRecorder {
     }
 
     pub fn add_bytes_sent(&self, bytes: u64) {
-        self.current.write().bytes_sent += bytes;
+        let mut current = self.current.write();
+        current.bytes_sent += bytes;
+        self.bandwidth.record_sample(current.bytes_sent, current.bytes_received);
     }
 
     pub fn add_bytes_received(&self, bytes: u64) {
-        self.current.write().bytes_received += bytes;
+        let mut current = self.current.write();
+        current.bytes_received += bytes;
+        self.bandwidth.record_sample(current.bytes_sent, current.bytes_received);
     }
 
     pub fn increment_packets_sent(&self) {
@@ -286,6 +299,151 @@ pub struct MetricsSummary {
     pub total_duration_secs: u64,
     pub success_rate: f64,
     pub server_count: u64,
+}
+
+use std::time::Instant;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BandwidthMetrics {
+    pub session_id: String,
+    pub samples: Vec<BandwidthSample>,
+    pub upload_speed_bps: u64,
+    pub download_speed_bps: u64,
+    pub peak_upload_bps: u64,
+    pub peak_download_bps: u64,
+    pub avg_upload_bps: u64,
+    pub avg_download_bps: u64,
+    pub total_transfer_mb: f64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BandwidthSample {
+    pub timestamp_ms: i64,
+    pub bytes_sent_delta: u64,
+    pub bytes_received_delta: u64,
+    pub duration_ms: u64,
+}
+
+impl Default for BandwidthMetrics {
+    fn default() -> Self {
+        Self {
+            session_id: String::new(),
+            samples: Vec::with_capacity(3600),
+            upload_speed_bps: 0,
+            download_speed_bps: 0,
+            peak_upload_bps: 0,
+            peak_download_bps: 0,
+            avg_upload_bps: 0,
+            avg_download_bps: 0,
+            total_transfer_mb: 0.0,
+        }
+    }
+}
+
+pub struct BandwidthRecorder {
+    current: Arc<RwLock<BandwidthMetrics>>,
+    last_sample: Arc<RwLock<(Instant, u64, u64)>>,
+    sample_interval_secs: u64,
+}
+
+impl BandwidthRecorder {
+    pub fn new(sample_interval_secs: u64) -> Self {
+        Self {
+            current: Arc::new(RwLock::new(BandwidthMetrics::default())),
+            last_sample: Arc::new(RwLock::new((
+                Instant::now(),
+                0u64,
+                0u64,
+            ))),
+            sample_interval_secs,
+        }
+    }
+
+    pub fn current(&self) -> BandwidthMetrics {
+        self.current.read().clone()
+    }
+
+    pub fn start_session(&self, session_id: &str) {
+        let mut current = self.current.write();
+        current.session_id = session_id.to_string();
+        current.samples.clear();
+        current.upload_speed_bps = 0;
+        current.download_speed_bps = 0;
+        current.peak_upload_bps = 0;
+        current.peak_download_bps = 0;
+        current.avg_upload_bps = 0;
+        current.avg_download_bps = 0;
+        current.total_transfer_mb = 0.0;
+
+        *self.last_sample.write() = (Instant::now(), 0u64, 0u64);
+    }
+
+    pub fn record_sample(&self, total_bytes_sent: u64, total_bytes_received: u64) {
+        let now = Instant::now();
+        let (last_time, last_sent, last_received) = *self.last_sample.read();
+
+        let elapsed = now.duration_since(last_time).as_millis() as u64;
+        if elapsed < self.sample_interval_secs * 1000 {
+            return;
+        }
+
+        let bytes_sent_delta = total_bytes_sent.saturating_sub(last_sent);
+        let bytes_received_delta = total_bytes_received.saturating_sub(last_received);
+
+        let send_bps = if elapsed > 0 {
+            (bytes_sent_delta as u128 * 8000 / elapsed as u128) as u64
+        } else {
+            0
+        };
+        let recv_bps = if elapsed > 0 {
+            (bytes_received_delta as u128 * 8000 / elapsed as u128) as u64
+        } else {
+            0
+        };
+
+        let mut current = self.current.write();
+        let timestamp_ms = unix_millis();
+
+        current.samples.push(BandwidthSample {
+            timestamp_ms,
+            bytes_sent_delta,
+            bytes_received_delta,
+            duration_ms: elapsed,
+        });
+
+        current.upload_speed_bps = send_bps;
+        current.download_speed_bps = recv_bps;
+
+        if send_bps > current.peak_upload_bps {
+            current.peak_upload_bps = send_bps;
+        }
+        if recv_bps > current.peak_download_bps {
+            current.peak_download_bps = recv_bps;
+        }
+
+        let total_sent: u64 = current.samples.iter().map(|s| s.bytes_sent_delta).sum();
+        let total_recv: u64 = current.samples.iter().map(|s| s.bytes_received_delta).sum();
+        let total_time_ms: u64 = current.samples.iter().map(|s| s.duration_ms).sum();
+
+        if total_time_ms > 0 {
+            current.avg_upload_bps = (total_sent as u128 * 8000 / total_time_ms as u128) as u64;
+            current.avg_download_bps = (total_recv as u128 * 8000 / total_time_ms as u128) as u64;
+        }
+
+        current.total_transfer_mb = (total_sent + total_recv) as f64 / (1024.0 * 1024.0);
+
+        *self.last_sample.write() = (now, total_bytes_sent, total_bytes_received);
+    }
+
+    pub fn end_session(&self) {
+        self.current.write().samples.clear();
+    }
+}
+
+impl Default for BandwidthRecorder {
+    fn default() -> Self {
+        Self::new(5)
+    }
 }
 
 fn unix_millis() -> i64 {

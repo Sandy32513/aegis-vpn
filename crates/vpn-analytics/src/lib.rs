@@ -2,7 +2,7 @@ pub mod metrics;
 pub mod events;
 pub mod export;
 
-pub use metrics::{ConnectionMetrics, MetricsRecorder};
+pub use metrics::{BandwidthMetrics, ConnectionMetrics, MetricsRecorder};
 pub use events::{ConnectionEvent, EventRecorder};
 pub use export::{PrometheusExporter, ExportFormat};
 

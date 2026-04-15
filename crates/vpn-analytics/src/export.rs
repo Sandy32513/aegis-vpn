@@ -1,7 +1,6 @@
 use crate::{events::EventRecorder, metrics::MetricsRecorder};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use parking_lot::RwLock;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ExportFormat {
@@ -18,6 +17,10 @@ pub struct PrometheusExporter {
 impl PrometheusExporter {
     pub fn new(metrics: Arc<MetricsRecorder>, events: Arc<EventRecorder>) -> Self {
         Self { metrics, events }
+    }
+
+    fn get_bandwidth(&self) -> Option<crate::metrics::BandwidthMetrics> {
+        Some(self.metrics.bandwidth().current())
     }
 
     pub fn export(&self) -> String {
@@ -114,6 +117,51 @@ impl PrometheusExporter {
         output.push_str("# TYPE aegis_server_count gauge\n");
         output.push_str(&format!("aegis_server_count {}\n", summary.server_count));
 
+        if let Some(bw) = self.get_bandwidth() {
+            output.push_str("\n# HELP aegis_bandwidth_upload_bytes_per_second Current upload speed in Bps\n");
+            output.push_str("# TYPE aegis_bandwidth_upload_bytes_per_second gauge\n");
+            output.push_str(&format!("aegis_bandwidth_upload_bytes_per_second {}\n", bw.upload_speed_bps));
+
+            output.push_str("\n# HELP aegis_bandwidth_download_bytes_per_second Current download speed in Bps\n");
+            output.push_str("# TYPE aegis_bandwidth_download_bytes_per_second gauge\n");
+            output.push_str(&format!(
+                "aegis_bandwidth_download_bytes_per_second {}\n",
+                bw.download_speed_bps
+            ));
+
+            output.push_str("\n# HELP aegis_bandwidth_peak_upload_bytes_per_second Peak upload speed in Bps\n");
+            output.push_str("# TYPE aegis_bandwidth_peak_upload_bytes_per_second gauge\n");
+            output.push_str(&format!(
+                "aegis_bandwidth_peak_upload_bytes_per_second {}\n",
+                bw.peak_upload_bps
+            ));
+
+            output.push_str("\n# HELP aegis_bandwidth_peak_download_bytes_per_second Peak download speed in Bps\n");
+            output.push_str("# TYPE aegis_bandwidth_peak_download_bytes_per_second gauge\n");
+            output.push_str(&format!(
+                "aegis_bandwidth_peak_download_bytes_per_second {}\n",
+                bw.peak_download_bps
+            ));
+
+            output.push_str("\n# HELP aegis_bandwidth_avg_upload_bytes_per_second Average upload speed in Bps\n");
+            output.push_str("# TYPE aegis_bandwidth_avg_upload_bytes_per_second gauge\n");
+            output.push_str(&format!(
+                "aegis_bandwidth_avg_upload_bytes_per_second {}\n",
+                bw.avg_upload_bps
+            ));
+
+            output.push_str("\n# HELP aegis_bandwidth_avg_download_bytes_per_second Average download speed in Bps\n");
+            output.push_str("# TYPE aegis_bandwidth_avg_download_bytes_per_second gauge\n");
+            output.push_str(&format!(
+                "aegis_bandwidth_avg_download_bytes_per_second {}\n",
+                bw.avg_download_bps
+            ));
+
+            output.push_str("\n# HELP aegis_bandwidth_total_megabytes Total data transferred in MB\n");
+            output.push_str("# TYPE aegis_bandwidth_total_megabytes gauge\n");
+            output.push_str(&format!("aegis_bandwidth_total_megabytes {}\n", bw.total_transfer_mb));
+        }
+
         for server_stat in self.metrics.server_stats() {
             let server_label = sanitize_label(&server_stat.server);
             
@@ -164,6 +212,8 @@ impl PrometheusExporter {
             })
         }).collect();
 
+        let bw = self.get_bandwidth();
+
         serde_json::json!({
             "active_session": summary.active_session,
             "summary": {
@@ -175,6 +225,7 @@ impl PrometheusExporter {
                 "success_rate": summary.success_rate,
                 "server_count": summary.server_count,
             },
+            "bandwidth": bw,
             "server_stats": self.metrics.server_stats(),
             "recent_events": events,
         })
@@ -185,8 +236,42 @@ impl PrometheusExporter {
             ExportFormat::Prometheus => Ok(self.export()),
             ExportFormat::Json => serde_json::to_string_pretty(&self.export_json())
                 .map_err(|e| e.to_string()),
-            ExportFormat::Csv => Err("CSV export not implemented".to_string()),
+            ExportFormat::Csv => self.export_csv(),
         }
+    }
+
+    pub fn export_csv(&self) -> Result<String, String> {
+        let summary = self.metrics.summary();
+        let mut output = String::new();
+
+        output.push_str("metric,value\n");
+        output.push_str(&format!("session_id,{}\n", summary.active_session.session_id));
+        output.push_str(&format!("server,{}\n", summary.active_session.server));
+        output.push_str(&format!("status,{}\n", summary.active_session.status));
+        output.push_str(&format!("duration_seconds,{}\n", summary.active_session.duration_secs));
+        output.push_str(&format!("bytes_sent,{}\n", summary.active_session.bytes_sent));
+        output.push_str(&format!("bytes_received,{}\n", summary.active_session.bytes_received));
+        output.push_str(&format!("packets_sent,{}\n", summary.active_session.packets_sent));
+        output.push_str(&format!("packets_received,{}\n", summary.active_session.packets_received));
+
+        if let Some(bw) = self.get_bandwidth() {
+            output.push_str(&format!("upload_speed_bps,{}\n", bw.upload_speed_bps));
+            output.push_str(&format!("download_speed_bps,{}\n", bw.download_speed_bps));
+            output.push_str(&format!("peak_upload_bps,{}\n", bw.peak_upload_bps));
+            output.push_str(&format!("peak_download_bps,{}\n", bw.peak_download_bps));
+            output.push_str(&format!("avg_upload_bps,{}\n", bw.avg_upload_bps));
+            output.push_str(&format!("avg_download_bps,{}\n", bw.avg_download_bps));
+            output.push_str(&format!("total_transfer_mb,{}\n", bw.total_transfer_mb));
+        }
+
+        output.push_str("\nsummary\n");
+        output.push_str(&format!("total_sessions,{}\n", summary.total_sessions));
+        output.push_str(&format!("successful_sessions,{}\n", summary.successful_sessions));
+        output.push_str(&format!("total_duration_secs,{}\n", summary.total_duration_secs));
+        output.push_str(&format!("success_rate,{}\n", summary.success_rate));
+        output.push_str(&format!("server_count,{}\n", summary.server_count));
+
+        Ok(output)
     }
 }
 

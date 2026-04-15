@@ -122,7 +122,7 @@ This report provides a comprehensive analysis of the Aegis VPN Windows platform 
 | ID | Severity | Status | Issue |
 |----|----------|--------|-------|
 | WIN-DS-01 | 🟢 LOW | ✅ | Connection analytics (Phase 1) | vpn-analytics crate |
-| WIN-DS-02 | 🟢 LOW | ⏳ | No bandwidth metrics export |
+| WIN-DS-02 | 🟢 LOW | ✅ | Bandwidth metrics export | vpn-analytics crate |
 
 ---
 
@@ -185,7 +185,7 @@ This report provides a comprehensive analysis of the Aegis VPN Windows platform 
 | WIN-UX-01 | ✅ | UI | Windows Tauri UI + Fluent Design | UI |
 | WIN-UX-02 | ✅ | UI | System tray + context menu | UI |
 | WIN-DS-01 | ✅ | Data | Connection analytics | vpn-analytics crate |
-| WIN-DS-02 | ⏳ | Data | No bandwidth metrics | logger |
+| WIN-DS-02 | ✅ | Data | Bandwidth metrics | vpn-analytics crate |
 | WIN-DEV-05 | ✅ | DevOps | wintun loaded via libloading (intentional) | Cargo.toml |
 
 ---
