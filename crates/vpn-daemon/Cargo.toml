@@ -1,0 +1,31 @@
+[package]
+name = "vpn-daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+ipnet.workspace = true
+parking_lot.workspace = true
+rand.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+vpn-config = { path = "../vpn-config" }
+vpn-crypto = { path = "../vpn-crypto" }
+vpn-ipc = { path = "../vpn-ipc" }
+vpn-logger = { path = "../vpn-logger" }
+vpn-routing = { path = "../vpn-routing" }
+vpn-rotation = { path = "../vpn-rotation" }
+vpn-transport = { path = "../vpn-transport" }
+vpn-tun = { path = "../vpn-tun" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+vpn-platform-linux = { path = "../vpn-platform-linux" }
+
+[target.'cfg(windows)'.dependencies]
+vpn-platform-windows = { path = "../vpn-platform-windows" }
+windows-service.workspace = true

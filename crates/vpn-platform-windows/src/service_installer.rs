@@ -2,7 +2,11 @@
 #[cfg(windows)]
 mod imp {
     use anyhow::{anyhow, Result};
-    use std::{path::Path, process::Command};
+    use std::{
+        os::windows::process::CommandExt,
+        path::{Path, PathBuf},
+        process::Command,
+    };
 
     pub struct ServiceInstaller;
 
@@ -20,61 +24,23 @@ mod imp {
             daemon_path: &Path,
             config_path: Option<&Path>,
         ) -> Result<()> {
-            // Validate service name: prevent command injection via sc.exe
-            if service_name.is_empty() || service_name.len() > 256 {
-                return Err(anyhow!("service name must be 1-256 characters"));
-            }
-            if !service_name
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
-            {
-                return Err(anyhow!(
-                    "service name must be alphanumeric, dash, underscore, or dot only"
-                ));
-            }
-
-            // Validate display name length
-            if display_name.len() > 256 {
-                return Err(anyhow!("display name too long (max 256 characters)"));
-            }
-
-            // Validate daemon path: must be absolute and exist
-            if !daemon_path.is_absolute() {
-                return Err(anyhow!("daemon_path must be absolute"));
-            }
-            if !daemon_path.exists() {
-                return Err(anyhow!(
-                    "daemon binary not found: {}",
-                    daemon_path.display()
-                ));
-            }
-            if !daemon_path.is_file() {
-                return Err(anyhow!(
-                    "daemon path is not a file: {}",
-                    daemon_path.display()
-                ));
-            }
-
-            // Validate config path if provided
-            if let Some(config) = config_path {
-                if !config.is_absolute() {
-                    return Err(anyhow!("config_path must be absolute if provided"));
-                }
-            }
+            validate_service_name(service_name)?;
+            validate_display_name(display_name)?;
+            let daemon_path = validate_existing_file("daemon_path", daemon_path)?;
+            let config_path = config_path
+                .map(|config| validate_existing_file("config_path", config))
+                .transpose()?;
 
             // SECURITY: Build binPath carefully to prevent sc.exe command injection
             // sc.exe parses binPath internally, so we quote paths and escape quotes
-            let bin_path = if let Some(config) = config_path {
+            let bin_path = if let Some(config) = &config_path {
                 format!(
                     "\"{}\" service-run --config-path \"{}\"",
-                    daemon_path.display().replace('"', "\\\""),
-                    config.display().replace('"', "\\\"")
+                    scm_quote(&daemon_path),
+                    scm_quote(config)
                 )
             } else {
-                format!(
-                    "\"{}\" service-run",
-                    daemon_path.display().replace('"', "\\\"")
-                )
+                format!("\"{}\" service-run", scm_quote(&daemon_path))
             };
 
             // Install service using sc.exe
@@ -104,6 +70,15 @@ mod imp {
                 ],
             )?;
 
+            // Use delayed auto-start so networking services can initialize first.
+            run(
+                "sc.exe",
+                &["config", service_name, "start=", "delayed-auto"],
+            )?;
+
+            // Restrict the generated service SID when the OS supports it.
+            run("sc.exe", &["sidtype", service_name, "restricted"])?;
+
             // Configure failure recovery: restart on crash
             run(
                 "sc.exe",
@@ -121,16 +96,7 @@ mod imp {
         }
 
         pub fn uninstall(service_name: &str) -> Result<()> {
-            // Validate service name
-            if service_name.is_empty() || service_name.len() > 256 {
-                return Err(anyhow!("service name must be 1-256 characters"));
-            }
-            if !service_name
-                .chars()
-                .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == '.')
-            {
-                return Err(anyhow!("invalid service name"));
-            }
+            validate_service_name(service_name)?;
 
             // Stop service (ignore errors if not running)
             let _ = run("sc.exe", &["stop", service_name]);
@@ -141,7 +107,11 @@ mod imp {
 
     /// Run a command and check exit status
     fn run(program: &str, args: &[&str]) -> Result<()> {
-        let output = Command::new(program)
+        let program_path = match program.to_ascii_lowercase().as_str() {
+            "sc.exe" => system32_path("sc.exe"),
+            _ => PathBuf::from(program),
+        };
+        let output = Command::new(&program_path)
             .args(args)
             .creation_flags(0x08000000) // CREATE_NO_WINDOW
             .output()?;
@@ -151,13 +121,61 @@ mod imp {
             let stdout = String::from_utf8_lossy(&output.stdout);
             return Err(anyhow!(
                 "{} failed (exit {}):\nstdout: {}\nstderr: {}",
-                program,
+                program_path.display(),
                 output.status.code().unwrap_or(-1),
                 stdout.trim(),
                 stderr.trim()
             ));
         }
         Ok(())
+    }
+
+    fn validate_service_name(service_name: &str) -> Result<()> {
+        if service_name.is_empty() || service_name.len() > 80 {
+            return Err(anyhow!("service name must be 1-80 characters"));
+        }
+        if !service_name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.')
+        {
+            return Err(anyhow!(
+                "service name must be ASCII alphanumeric, dash, underscore, or dot only"
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_display_name(display_name: &str) -> Result<()> {
+        if display_name.is_empty() || display_name.len() > 256 {
+            return Err(anyhow!("display name must be 1-256 characters"));
+        }
+        if display_name.chars().any(|c| c.is_control()) {
+            return Err(anyhow!("display name cannot contain control characters"));
+        }
+        Ok(())
+    }
+
+    fn validate_existing_file(label: &str, path: &Path) -> Result<PathBuf> {
+        if !path.is_absolute() {
+            return Err(anyhow!("{label} must be absolute"));
+        }
+        if !path.is_file() {
+            return Err(anyhow!("{label} is not a file: {}", path.display()));
+        }
+        path.canonicalize()
+            .map_err(|e| anyhow!("failed to canonicalize {label} {}: {e}", path.display()))
+    }
+
+    fn scm_quote(path: &Path) -> String {
+        path.display().to_string().replace('"', "\\\"")
+    }
+
+    fn system32_path(exe: &str) -> PathBuf {
+        std::env::var_os("SystemRoot")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+            .join("System32")
+            .join(exe)
     }
 }
 

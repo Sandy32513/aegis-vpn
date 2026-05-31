@@ -10,4 +10,8 @@ dunce = "1.0"
 libloading.workspace = true
 tracing.workspace = true
 vpn-tun = { path = "../vpn-tun" }
-windows-sys.workspace = true
+windows-sys = { workspace = true, features = [
+    "Win32_NetworkManagement_WindowsFilteringPlatform",
+    "Win32_Security",
+    "Win32_System_Rpc",
+] }

@@ -1,6 +1,4 @@
-// ═══════════════════════════════════════════════════════════════
-// PART 2: Centralized Admin Privilege Detection
-// ═══════════════════════════════════════════════════════════════
+// Centralized admin privilege detection.
 
 #[cfg(windows)]
 mod imp {
@@ -10,7 +8,7 @@ mod imp {
     static IS_ADMIN: OnceLock<bool> = OnceLock::new();
 
     /// Check if the current process has administrator privileges.
-    /// Result is cached after first call — no repeated syscalls.
+    /// Result is cached after first call to avoid repeated token checks.
     pub fn is_admin() -> bool {
         *IS_ADMIN.get_or_init(|| {
             let result = check_admin_inner();
@@ -84,15 +82,15 @@ mod imp {
 mod imp {
     use tracing::info;
 
-    /// On non-Windows, check if running as root (UID 0).
+    /// This crate exposes Windows-only privilege checks. Non-Windows builds are
+    /// test stubs, so report false without taking a libc dependency.
     pub fn is_admin() -> bool {
-        let result = unsafe { libc::geteuid() == 0 };
-        info!("admin privilege detection (unix): is_admin={}", result);
-        result
+        info!("admin privilege detection (non-windows stub): is_admin=false");
+        false
     }
 
     pub fn has_elevated_token() -> bool {
-        is_admin()
+        false
     }
 }
 

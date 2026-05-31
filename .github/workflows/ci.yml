@@ -1,0 +1,167 @@
+name: ci
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux:
+    name: Linux Build, Lint, Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: linux-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: linux-cargo-
+
+      - name: Format check
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Build
+        run: cargo build --workspace
+
+      - name: Test
+        run: cargo test --workspace -- --test-threads=1
+
+  windows:
+    name: Windows Build, Lint, Test
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~\.cargo\registry
+            ~\.cargo\git
+            target
+          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: windows-cargo-
+
+      - name: Format check
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Windows platform check
+        run: cargo check -p vpn-platform-windows
+
+      - name: Windows daemon check
+        run: cargo check -p vpn-daemon
+
+      - name: Tests (including mock-based Windows tests)
+        run: cargo test --workspace -- --test-threads=1
+
+      - name: PowerShell static analysis
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force
+          Invoke-ScriptAnalyzer -Path scripts/windows -Recurse -EnableExit
+
+      # Windows integration tests that require admin + wintun.dll
+      # These are run separately and can be skipped if prerequisites aren't met
+      - name: Windows Integration Tests (requires admin + wintun.dll)
+        if: ${{ github.event_name == 'workflow_dispatch' || env.RUN_WINDOWS_INTEGRATION_TESTS == 'true' }}
+        run: |
+          # Check if we're running as administrator
+          $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+          if (-not $isAdmin) {
+            Write-Host "Skipping Windows integration tests - not running as administrator"
+            exit 0
+          }
+          
+          # Check if wintun.dll is available
+          $wintunPath = Join-Path $env:GITHUB_WORKSPACE 'wintun.dll'
+          if (-Not (Test-Path $wintunPath)) {
+            Write-Host "Skipping Windows integration tests - wintun.dll not found at $wintunPath"
+            Write-Host "To run these tests, place wintun.dll in the repository root"
+            exit 0
+          }
+          
+          Write-Host "Running Windows integration tests with admin privileges and wintun.dll"
+          cargo test --workspace -- --test-threads=1 --ignored
+        shell: pwsh
+
+  ui:
+    name: UI Lint, Typecheck
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ui
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: TypeScript typecheck
+        run: npx tsc --noEmit
+
+  security:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: cargo-audit-${{ runner.os }}
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked --force
+
+      - name: Audit Rust dependencies
+        run: cargo audit
+
+  task-scan:
+    name: Task Tracker Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Scan TODOs and FIXMEs
+        run: node scripts/task-tracker.mjs --scan-only

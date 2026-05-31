@@ -1,0 +1,14 @@
+[package]
+name = "vpn-routing"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ipnet.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+hex.workspace = true

@@ -1,0 +1,35 @@
+[client]
+server_endpoint = "198.51.100.10:7000"
+trusted_server_public_key = ""
+bind_address = "0.0.0.0:0"
+tun_name = "aegis0"
+tun_cidr = "10.20.0.2/24"
+mtu = 1400
+rotation_interval_secs = 300
+kill_switch = true
+config_identity_dir = "state/client"
+
+[server]
+listen_address = "0.0.0.0:7000"
+transport_port = 7000
+tun_name = "aegis-srv0"
+tun_cidr = "10.20.0.1/24"
+client_pool_cidr = "10.20.0.0/24"
+egress_interface = "eth0"
+nat_mode = "iptables"
+session_timeout_secs = 300
+config_identity_dir = "state/server"
+
+[control_plane]
+node_id = "edge-01"
+bootstrap_token_env = "AEGIS_BOOTSTRAP_TOKEN"
+allow_persist_identity = true
+
+[dns]
+servers = ["1.1.1.1", "9.9.9.9"]
+search_domains = ["corp.example"]
+
+[logging]
+json_log_path = "logs/aegis-daemon.jsonl"
+mysql_url = ""
+level = "info"

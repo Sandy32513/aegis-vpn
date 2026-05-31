@@ -1,0 +1,61 @@
+{
+  "projectId": "4211889957954329850",
+  "screens": [
+    {
+      "name": "Design System",
+      "id": "asset-stub-assets-6fa658033da14af6b64f5b2328dbba41-1774778870605",
+      "slug": "design-system",
+      "category": "components",
+      "urlEnvVar": "STITCH_SCREEN_DESIGN_SYSTEM_URL"
+    },
+    {
+      "name": "Aegis VPN Dashboard",
+      "id": "d6c9cb263e4c4beab2bef7c69b246801",
+      "slug": "aegis-vpn-dashboard",
+      "category": "dashboard",
+      "urlEnvVar": "STITCH_SCREEN_DASHBOARD_URL"
+    },
+    {
+      "name": "Server Selection",
+      "id": "ee37e2bc9ddf4670b610accd326a334d",
+      "slug": "server-selection",
+      "category": "server-selection",
+      "urlEnvVar": "STITCH_SCREEN_SERVER_SELECTION_URL"
+    },
+    {
+      "name": "VPN Settings",
+      "id": "4aad85460d37407ebfe5ebd4d7615167",
+      "slug": "vpn-settings",
+      "category": "settings",
+      "urlEnvVar": "STITCH_SCREEN_VPN_SETTINGS_URL"
+    },
+    {
+      "name": "Account & Subscription",
+      "id": "a85d7d9f22d34d4d833a268e87c6683f",
+      "slug": "account-subscription",
+      "category": "account",
+      "urlEnvVar": "STITCH_SCREEN_ACCOUNT_URL"
+    },
+    {
+      "name": "System Health & Diagnostics",
+      "id": "cf3ccf9b4dd94a1c9c85a34f33355bf8",
+      "slug": "system-health-diagnostics",
+      "category": "diagnostics",
+      "urlEnvVar": "STITCH_SCREEN_DIAGNOSTICS_URL"
+    },
+    {
+      "name": "Developer Logs & Terminal (Primary)",
+      "id": "711e934878ee422ab75418c9f951cc89",
+      "slug": "developer-logs-terminal-primary",
+      "category": "logs",
+      "urlEnvVar": "STITCH_SCREEN_DEV_LOGS_PRIMARY_URL"
+    },
+    {
+      "name": "Developer Logs & Terminal (Secondary)",
+      "id": "d86800282bf9413aae7d219f85576ad7",
+      "slug": "developer-logs-terminal-secondary",
+      "category": "logs",
+      "urlEnvVar": "STITCH_SCREEN_DEV_LOGS_SECONDARY_URL"
+    }
+  ]
+}
